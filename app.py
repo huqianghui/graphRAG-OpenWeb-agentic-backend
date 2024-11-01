@@ -644,7 +644,6 @@ async def multiversion_chat(request: MultiversionChatCompletionRequest):
 
     return JSONResponse(content=response.dict())
 
-
 @app.get("/v1/models")
 async def list_models():
     """
@@ -668,6 +667,15 @@ async def list_models():
 
     logger.info(f"Sending model list: {response}")
     return JSONResponse(content=response)
+
+@app.get("/status")
+async def status():
+    return JSONResponse(content={"status": "Server is up and running"})
+
+@app.get("/")
+async def status():
+    return JSONResponse(content={"message": "Hello,This is graphrag agentic backend server."})
+
 
 if __name__ == "__main__":
     import uvicorn

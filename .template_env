@@ -1,0 +1,27 @@
+INPUT_DIR="./artifacts"
+
+# Set the API key for LLM
+GRAPHRAG_API_KEY="XXXX"
+
+# Set the API key for embedding (if different from GRAPHRAG_API_KEY)
+GRAPHRAG_API_KEY_EMBEDDING="XXXXX"
+
+# Set the LLM model 
+GRAPHRAG_LLM_MODEL="gpt-4o"
+
+OPENAI_API_VERSION="2024-02-15-preview"
+
+# Set the API base URL 
+API_BASE="https://XXXX.openai.azure.com"
+
+# Set the embedding API base URL (default is OpenAI's API)
+API_BASE_EMBEDDING="https://XXXX.openai.azure.com"
+
+# Set the embedding model (default is "text-embedding-3-small")
+GRAPHRAG_EMBEDDING_MODEL="text-embedding-3-small"
+
+# baseline RAG
+AZURE_AI_SEARCH_ENDPOINT = "https://XXXX.search.windows.net"
+AZURE_AI_SEARCH_KEY= "XXXX"
+AZURE_AI_SEARCH_INDEX_NAME = "baseline-rag-index01"
+AZURE_AI_SEARCH_EMBEDDING_MODE="text-embedding-ada-002"

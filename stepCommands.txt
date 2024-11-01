@@ -1,0 +1,8 @@
+1. init
+python -m graphrag.index --init --root ./ragtest
+
+2. prompt-tune
+python -m graphrag.prompt_tune  --config CONFIG --root ./ragtest --domain "video games" --selection-method random --limit 10 --language Chinese --max-tokens 2048 --chunk-size 256 --no-entity-types --output ./ragtest/prompts/tuned-prompts
+
+3. build index
+ python -m graphrag.index --root ./ragtest

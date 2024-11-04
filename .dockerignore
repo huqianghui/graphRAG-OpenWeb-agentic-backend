@@ -1,0 +1,16 @@
+# 忽略所有文件和目录
+**
+
+# 但包含根目录下的文件
+!/*.py
+!.env
+!/*.txt
+!/*.md
+!requirements.txt
+!Dockerfile
+
+# 包含 artifacts 目录及其内容
+!artifacts/
+!transformers/
+
+# 忽略其他子目录

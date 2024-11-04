@@ -36,7 +36,6 @@ from graphrag.query.structured_search.local_search.mixed_context import (
 )
 from graphrag.query.structured_search.local_search.search import LocalSearch
 from graphrag.vector_stores.lancedb import LanceDBVectorStore
-from promptflow.tracing import start_trace, trace
 from pydantic import BaseModel, Field
 
 from appConfig import (
@@ -456,6 +455,7 @@ async def full_model_search(prompt: str):
 
     return formatted_result
 
+@app.post("/chat/completions")
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
 
@@ -569,6 +569,7 @@ async def agentic_chat_completions(prompt: str) -> str:
       
     return await agent.run(enhanced_question)
 
+@app.post("/multiversion/chat")
 @app.post("/v1/multiversion/chat")
 async def multiversion_chat(request: MultiversionChatCompletionRequest):
 
@@ -644,6 +645,7 @@ async def multiversion_chat(request: MultiversionChatCompletionRequest):
 
     return JSONResponse(content=response.dict())
 
+@app.get("/models")
 @app.get("/v1/models")
 async def list_models():
     """
@@ -673,8 +675,8 @@ async def status():
     return JSONResponse(content={"status": "Server is up and running"})
 
 @app.get("/")
-async def status():
-    return JSONResponse(content={"message": "Hello,This is graphrag agentic backend server."})
+async def read_root():
+    return {"message": "Welcome to graphrag agentic backend server."}
 
 
 if __name__ == "__main__":

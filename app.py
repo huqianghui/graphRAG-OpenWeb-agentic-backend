@@ -7,6 +7,8 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional, Union, Dict, Literal
+
 
 import pandas as pd
 import tiktoken
@@ -34,9 +36,10 @@ from graphrag.query.structured_search.global_search.search import GlobalSearch
 from graphrag.query.structured_search.local_search.mixed_context import (
     LocalSearchMixedContext,
 )
-from graphrag.query.structured_search.local_search.search import LocalSearch
+from customizedMultiModelLocalSearch import MultiModelLocalSearch
 from graphrag.vector_stores.lancedb import LanceDBVectorStore
 from pydantic import BaseModel, Field
+from multiModelsPictureProcess import get_content_by_mulit_model
 
 from appConfig import (
     COMMUNITY_LEVEL,
@@ -49,7 +52,7 @@ from appConfig import (
     RELATIONSHIP_TABLE,
     TEXT_UNIT_TABLE,
 )
-from customizedLocalSearchFactory import setup_search_engines_by_fileNameParttern
+from customizedMultiVersionLocalSearchFactory import setup_search_engines_by_fileNameParttern
 from engine import AzureOpenAIEngine
 from retrieverTool import (
     BaselineRagRetrieverTool,
@@ -74,6 +77,20 @@ class Message(BaseModel):
     role: str
     content: str
 
+class TextContent(BaseModel):
+    type: Literal["text"]
+    text: str
+
+class ImageContent(BaseModel):
+    type: Literal["image_url"]
+    image_url: Dict[str, str]
+
+MultiModelMessageContent = Union[TextContent, ImageContent]
+
+class MultiModelMessage(BaseModel):
+    role: str
+    content: List[MultiModelMessageContent]
+
 
 class ChatCompletionRequest(BaseModel):
     model: str
@@ -89,6 +106,21 @@ class ChatCompletionRequest(BaseModel):
     frequency_penalty: Optional[float] = 0
     logit_bias: Optional[Dict[str, float]] = None
     user: Optional[str] = None
+
+class MultiModelChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[MultiModelMessage]
+    temperature: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    n: Optional[int] = 1
+    stream: Optional[bool] = False
+    stop: Optional[Union[str, List[str]]] = None
+    max_tokens: Optional[int] = None
+    presence_penalty: Optional[float] = 0
+    frequency_penalty: Optional[float] = 0
+    logit_bias: Optional[Dict[str, float]] = None
+    user: Optional[str] = None
+
 
 class MultiversionChatCompletionRequest(BaseModel):
     message: str
@@ -244,7 +276,7 @@ async def setup_search_engines(llm, token_encoder, text_embedder, entities, rela
         "temperature": 0.0,
     }
 
-    local_search_engine = LocalSearch(
+    local_search_engine = MultiModelLocalSearch(
         llm=llm,
         context_builder=local_context_builder,
         token_encoder=token_encoder,
@@ -427,9 +459,7 @@ async def lifespan(app: FastAPI):
     # Execute on shutdown
     logger.info("Shutting down...")
 
-
 app = FastAPI(lifespan=lifespan)
-
 
 # Add the following code to the chat_completions function
 
@@ -457,7 +487,7 @@ async def full_model_search(prompt: str):
 
 @app.post("/chat/completions")
 @app.post("/v1/chat/completions")
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(request: MultiModelChatCompletionRequest):
 
     #start_trace(resource_attributes={"model": request.model, "user": request.user},collection="test")
     if not local_search_engine or not global_search_engine:
@@ -465,13 +495,24 @@ async def chat_completions(request: ChatCompletionRequest):
         raise HTTPException(status_code=500, detail="Search engines not initialized")
 
     try:
-        logger.info(f"Received chat completion request: {request}")
-        prompt = request.messages[-1].content
-        logger.info(f"Processing prompt: {prompt}")
+        logger.info(f"Received chat completion request")
+        latestContentList = request.messages[-1].content
+        for content in latestContentList:
+            if content.type == "text":
+                prompt = content.text
+            elif content.type == "image_url":
+                imageContent = content.image_url["url"]
+            
+            logger.info(f"Processing prompt: {prompt}")
 
         # Choose different search methods based on the model
         if request.model == "graphrag-global-search:latest":
-            result = await global_search_engine.asearch(prompt)
+            if imageContent is None:
+                result = await global_search_engine.asearch(prompt)
+            else:
+                imageContent = await get_content_by_mulit_model(imageContent)
+                contextQuery = prompt + " 例如： " +  imageContent
+                result = await global_search_engine.asearch(contextQuery)
             formatted_response = format_response(result.response)
         elif request.model == "baselinerag-search:latest":
             result = await baseline_rag_search(prompt)
@@ -479,9 +520,17 @@ async def chat_completions(request: ChatCompletionRequest):
         elif request.model == "full-model:latest":
             formatted_response = await full_model_search(prompt)
         elif request.model == "agentic-search:latest":
-            formatted_response = await agentic_chat_completions(prompt)
+            if imageContent is None:
+               formatted_response = await agentic_chat_completions(prompt)
+            else:
+               formatted_response = await agentic_chat_completions(prompt,imageContent)
+
         else:  # Default to local search
-            result = await local_search_engine.asearch(prompt)
+            if imageContent is None:
+                result = await local_search_engine.asearch(prompt)
+            else:
+                result = await local_search_engine.asearchWithImage(prompt, imageContent)
+                
             formatted_response = format_response(result.response)
 
         logger.info(f"Formatted search result: {formatted_response}")
@@ -548,14 +597,18 @@ async def chat_completions(request: ChatCompletionRequest):
         logger.error(f"Error processing chat completion: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-async def agentic_chat_completions(prompt: str) -> str:
+async def agentic_chat_completions(prompt: str,imageUrl: Optional[str] = None) -> str:
+
+    imageContent = await get_content_by_mulit_model(imageUrl)
+    contextQuery = prompt + " 例如： " +  imageContent
+    
     enhanced_question = f"""Using the information contained in your knowledge base, which you can access with the 'retriever' tool,
                                 give a comprehensive answer to the question below.
                                 Respond only to the question asked, response should be concise and relevant to the question.
-                                If you cannot find information, do not give up and try calling your retriever again with different arguments!
-                                Make sure to have covered the question completely by calling the retriever tool several times with semantically different queries.
-                                Your queries should not be questions but affirmative form sentences: e.g. rather than "How do I load a model from the Hub in bf16?", query should be "load a model from the Hub bf16 weights".
 
+                                从 {imageContent} 图片的地理位置或文化背景出发，根据图片内容的展示内容为中心，延伸到内容的背后情感和中心思想。用游记的形式将三者构成一个由下而上、依次递升的游记结构，来回答问题。内容大概是800左右。
+                                answer the question in the question's language. And default is Chinese.
+                                
                                 Question:
                                 {prompt}"""
       
@@ -565,9 +618,17 @@ async def agentic_chat_completions(prompt: str) -> str:
     graphLocalRetrieverTool = GraphLocalRetrieverTool(local_search_engine)
     baselineRagRetrieverTool = BaselineRagRetrieverTool()
        
-    agent = ReactJsonAgent(tools=[graphGlobalRetrieverTool,graphLocalRetrieverTool,baselineRagRetrieverTool], llm_engine=llm_engine, max_iterations=4, verbose=2)
-      
+    agent = ReactJsonAgent(tools=[graphGlobalRetrieverTool,graphLocalRetrieverTool], llm_engine=llm_engine, max_iterations=4, verbose=2)
+    
     return await agent.run(enhanced_question)
+
+    # if imageUrl is None :
+    #     return await agent.run(enhanced_question)
+    # else :
+    #     agentParameters = {"query":enhanced_question,"imageUrl":imageUrl}
+    #     return await agent.run(agentParameters)
+
+    
 
 @app.post("/multiversion/chat")
 @app.post("/v1/multiversion/chat")
@@ -644,6 +705,37 @@ async def multiversion_chat(request: MultiversionChatCompletionRequest):
 
 
     return JSONResponse(content=response.dict())
+
+
+class PromptRequest(BaseModel):
+    prompt: str
+    imageUrl: Optional[str] = None
+
+@app.post("/v1/multimode/chat")
+async def chat_context(request: PromptRequest):
+
+    #start_trace(resource_attributes={"model": request.model, "user": request.user},collection="test")
+    if not local_search_engine or not global_search_engine:
+        logger.error("Search engines not initialized")
+        raise HTTPException(status_code=500, detail="Search engines not initialized")
+
+    try:        
+        logger.info(f"Processing prompt: {request.prompt}")
+
+        result = await local_search_engine.asearchWithImage(request.prompt,request.imageUrl)
+        
+        return JSONResponse(content={
+            "completion_time": result.completion_time,
+            "context_text": result.context_text,
+            "llm_calls": result.llm_calls,
+            "prompt_tokens": result.prompt_tokens,
+            "response": result.response
+        })
+            
+
+    except Exception as e:
+        logger.error(f"Error processing chat completion: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/models")
 @app.get("/v1/models")

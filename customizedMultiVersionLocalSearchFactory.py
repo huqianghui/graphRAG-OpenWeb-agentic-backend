@@ -29,7 +29,7 @@ from graphrag.query.structured_search.local_search.mixed_context import (
 from graphrag.query.structured_search.local_search.search import LocalSearch
 from graphrag.vector_stores.lancedb import LanceDBVectorStore
 
-from customizedLocalSearch import MultiVersionLocalSearch
+from customizedMultiVersionLocalSearch import MultiVersionLocalSearch
 
 DOCUMENT_TABLE = "create_base_documents.parquet"
 

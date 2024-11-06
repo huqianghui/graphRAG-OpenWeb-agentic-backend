@@ -2,6 +2,7 @@ from graphrag.query.structured_search.global_search.search import GlobalSearch
 from graphrag.query.structured_search.local_search.search import LocalSearch
 
 from transformers.agents import Tool
+from typing import Any, Dict, List, Optional, Union
 
 
 class GraphLocalRetrieverTool(Tool):
@@ -19,10 +20,13 @@ class GraphLocalRetrieverTool(Tool):
         super().__init__(**kwargs)
         self.localSearch = localSearch
 
-    async def forward(self, query: str) -> str:
+    async def forward(self, query: str,imageUrl: Optional[str] = None) -> str:
         assert isinstance(query, str), "Your search query must be a string"
-
-        result = await self.localSearch.asearch(query)
+        
+        if(imageUrl is None):
+            result = await self.localSearch.asearch(query)
+        else:
+            result = await self.localSearch.asearchWithImage(query,imageUrl)
 
         return result
     
